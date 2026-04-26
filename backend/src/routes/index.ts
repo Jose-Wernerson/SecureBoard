@@ -1,9 +1,7 @@
-import { Router } from "express";
+import type { FastifyInstance } from "fastify";
 
-export const router = Router();
+import { healthRoutes } from "./health.routes.js";
 
-router.get("/v1", (_request, response) => {
-  response.status(200).json({
-    message: "SecureBoard backend is running",
-  });
-});
+export async function registerRoutes(app: FastifyInstance) {
+  await app.register(healthRoutes);
+}

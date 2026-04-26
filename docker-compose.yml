@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: secureboard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-secureboard}
+      POSTGRES_USER: ${POSTGRES_USER:-secureboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secureboard}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ./docker/postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-secureboard} -d ${POSTGRES_DB:-secureboard}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: secureboard-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+
+  api:
+    build:
+      context: ./backend
+      target: development
+    container_name: secureboard-api
+    restart: unless-stopped
+    environment:
+      PORT: ${PORT:-3333}
+      HOST: 0.0.0.0
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-secureboard}:${POSTGRES_PASSWORD:-secureboard}@postgres:5432/${POSTGRES_DB:-secureboard}?schema=public
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "${PORT:-3333}:${PORT:-3333}"
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma

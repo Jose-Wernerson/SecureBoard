@@ -1,24 +1,36 @@
-import cors from "cors";
-import express from "express";
-import helmet from "helmet";
-import morgan from "morgan";
+import fastifyCors from "@fastify/cors";
+import fastifyHelmet from "@fastify/helmet";
+import Fastify from "fastify";
 
-import { router } from "./routes/index.js";
+import { env } from "./config/env.js";
+import { registerErrorHandler } from "./middlewares/error-handler.js";
+import { registerRoutes } from "./routes/index.js";
 
-export const app = express();
-
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
-app.use(morgan("dev"));
-
-app.get("/health", (_request, response) => {
-  response.status(200).json({
-    name: "SecureBoard API",
-    status: "ok",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
+export function buildApp() {
+  const app = Fastify({
+    logger:
+      env.NODE_ENV === "development"
+        ? {
+            transport: {
+              target: "pino-pretty",
+              options: {
+                translateTime: "SYS:standard",
+                ignore: "pid,hostname",
+              },
+            },
+          }
+        : true,
   });
-});
 
-app.use("/api", router);
+  registerErrorHandler(app);
+
+  app.register(fastifyHelmet);
+  app.register(fastifyCors, {
+    origin: env.CORS_ORIGIN,
+    credentials: true,
+  });
+
+  app.register(registerRoutes);
+
+  return app;
+}
