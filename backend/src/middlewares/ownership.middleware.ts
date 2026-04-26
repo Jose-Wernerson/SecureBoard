@@ -24,14 +24,18 @@ export async function ensureBoardOwnership(
   const board = await prisma.board.findFirst({
     where: {
       id: boardId,
-      userId: request.authUser.id,
     },
     select: {
+      userId: true,
       id: true,
     },
   });
 
   if (!board) {
     throw new AppError(404, "Board not found", "BOARD_NOT_FOUND");
+  }
+
+  if (board.userId !== request.authUser.id) {
+    throw new AppError(403, "Forbidden board access", "FORBIDDEN_BOARD_ACCESS");
   }
 }

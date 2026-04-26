@@ -1,15 +1,18 @@
-import { createHash, randomUUID } from "node:crypto";
-
-import bcrypt from "bcrypt";
-import jwt, { type JwtPayload } from "jsonwebtoken";
+import { createHash } from "node:crypto";
 
 import { env } from "../config/env.js";
 import type {
-  AccessTokenPayload,
   AuthTokens,
   AuthenticatedUser,
-  RefreshTokenPayload,
 } from "../models/auth.model.js";
+import {
+  decodeRefreshToken,
+  generateAccessToken,
+  generateRefreshToken,
+  hashPassword,
+  verifyAccessToken as verifyAccessTokenValue,
+  verifyPassword,
+} from "../modules/auth/auth.security.js";
 import { prisma } from "./prisma.js";
 import { redis } from "./redis.js";
 import type { LoginInput, RegisterInput } from "../modules/auth/auth.schema.js";
@@ -55,69 +58,6 @@ async function ensureRedisConnection() {
 
 function getLoginAttemptsKey(ipAddress: string) {
   return `auth:login:attempts:${ipAddress}`;
-}
-
-function buildAccessToken(user: AuthenticatedUser) {
-  const payload: AccessTokenPayload = {
-    ...user,
-    sub: user.id,
-    type: "access",
-  };
-
-  return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
-    audience: "secureboard-client",
-    expiresIn: `${env.ACCESS_TOKEN_TTL_MINUTES}m`,
-    issuer: "secureboard-api",
-  });
-}
-
-function buildRefreshToken(user: AuthenticatedUser) {
-  const payload: RefreshTokenPayload = {
-    ...user,
-    sub: user.id,
-    jti: randomUUID(),
-    type: "refresh",
-  };
-
-  return jwt.sign(payload, env.JWT_REFRESH_SECRET, {
-    audience: "secureboard-client",
-    expiresIn: `${env.REFRESH_TOKEN_TTL_DAYS}d`,
-    issuer: "secureboard-api",
-  });
-}
-
-function verifyAccessPayload(token: string) {
-  try {
-    const payload = jwt.verify(token, env.JWT_ACCESS_SECRET, {
-      audience: "secureboard-client",
-      issuer: "secureboard-api",
-    });
-
-    if (typeof payload === "string" || payload.type !== "access") {
-      throw new AppError(401, "Invalid access token", "INVALID_ACCESS_TOKEN");
-    }
-
-    return payload as AccessTokenPayload & JwtPayload;
-  } catch {
-    throw new AppError(401, "Invalid or expired access token", "INVALID_ACCESS_TOKEN");
-  }
-}
-
-function verifyRefreshPayload(token: string) {
-  try {
-    const payload = jwt.verify(token, env.JWT_REFRESH_SECRET, {
-      audience: "secureboard-client",
-      issuer: "secureboard-api",
-    });
-
-    if (typeof payload === "string" || payload.type !== "refresh") {
-      throw new AppError(401, "Invalid refresh token", "INVALID_REFRESH_TOKEN");
-    }
-
-    return payload as RefreshTokenPayload & JwtPayload;
-  } catch {
-    throw new AppError(401, "Invalid or expired refresh token", "INVALID_REFRESH_TOKEN");
-  }
 }
 
 async function persistRefreshToken(userId: string, refreshToken: string) {
@@ -181,8 +121,8 @@ function buildAuthTokens(user: AuthenticatedUser): AuthTokens {
   const mappedUser = mapUser(user);
 
   return {
-    accessToken: buildAccessToken(mappedUser),
-    refreshToken: buildRefreshToken(mappedUser),
+    accessToken: generateAccessToken(mappedUser),
+    refreshToken: generateRefreshToken(mappedUser),
     user: mappedUser,
   };
 }
@@ -198,7 +138,7 @@ export async function registerUser(input: RegisterInput) {
     throw new AppError(409, "Email already in use", "EMAIL_ALREADY_IN_USE");
   }
 
-  const passwordHash = await bcrypt.hash(input.password, env.BCRYPT_ROUNDS);
+  const passwordHash = await hashPassword(input.password);
 
   const user = await prisma.user.create({
     data: {
@@ -233,7 +173,7 @@ export async function loginUser(input: LoginInput, ipAddress: string) {
     throw new AppError(401, "Invalid credentials", "INVALID_CREDENTIALS");
   }
 
-  const passwordMatches = await bcrypt.compare(input.password, user.passwordHash);
+  const passwordMatches = await verifyPassword(input.password, user.passwordHash);
 
   if (!passwordMatches) {
     await registerFailedLoginAttempt(ipAddress);
@@ -249,18 +189,11 @@ export async function loginUser(input: LoginInput, ipAddress: string) {
 }
 
 export function verifyAccessToken(token: string) {
-  const payload = verifyAccessPayload(token);
-
-  return mapUser({
-    id: payload.sub,
-    email: payload.email,
-    name: payload.name ?? null,
-    role: payload.role,
-  });
+  return mapUser(verifyAccessTokenValue(token));
 }
 
 export async function refreshUserSession(refreshToken: string) {
-  const payload = verifyRefreshPayload(refreshToken);
+  const payload = decodeRefreshToken(refreshToken);
   const now = new Date();
   const tokenHash = hashToken(refreshToken);
 

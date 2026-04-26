@@ -17,6 +17,22 @@ services:
       timeout: 5s
       retries: 5
 
+  postgres_test:
+    image: postgres:15-alpine
+    container_name: secureboard-postgres-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-secureboard_test}
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-secureboard}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-secureboard}
+    ports:
+      - "${POSTGRES_TEST_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_TEST_USER:-secureboard} -d ${POSTGRES_TEST_DB:-secureboard_test}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     container_name: secureboard-redis
