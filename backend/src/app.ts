@@ -1,3 +1,4 @@
+import fastifyCookie from "@fastify/cookie";
 import fastifyCors from "@fastify/cors";
 import fastifyHelmet from "@fastify/helmet";
 import Fastify from "fastify";
@@ -24,6 +25,7 @@ export function buildApp() {
 
   registerErrorHandler(app);
 
+  app.register(fastifyCookie);
   app.register(fastifyHelmet);
   app.register(fastifyCors, {
     origin: env.CORS_ORIGIN,
