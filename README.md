@@ -2,7 +2,7 @@
 
 ![Node.js](https://img.shields.io/badge/Node.js-22-3C873A?style=for-the-badge&logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![Next.js](https://img.shields.io/badge/Next.js-15-000000?style=for-the-badge&logo=next.js&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=for-the-badge&logo=next.js&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.x-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-26-2496ED?style=for-the-badge&logo=docker&logoColor=white)
@@ -25,21 +25,28 @@ O SecureBoard foi pensado como um projeto de portfólio para evidenciar:
 ```text
 SecureBoard/
 |-- backend/
+|   |-- .env.example
+|   |-- package.json
 |   |-- prisma/
-|   |   `-- .gitkeep
+|   |   |-- .gitkeep
+|   |   `-- schema.prisma
 |   |-- src/
 |   |   |-- config/
-|   |   |   `-- .gitkeep
+|   |   |   |-- .gitkeep
+|   |   |   `-- env.ts
 |   |   |-- middlewares/
 |   |   |   `-- .gitkeep
 |   |   |-- modules/
 |   |   |   `-- .gitkeep
 |   |   |-- routes/
-|   |   |   `-- .gitkeep
+|   |   |   |-- .gitkeep
+|   |   |   `-- index.ts
 |   |   |-- services/
 |   |   |   `-- .gitkeep
 |   |   |-- types/
 |   |   |   `-- .gitkeep
+|   |   |-- app.ts
+|   |   |-- server.ts
 |   |   `-- utils/
 |   |       `-- .gitkeep
 |   `-- tests/
@@ -50,20 +57,34 @@ SecureBoard/
 |   `-- .gitkeep
 |-- frontend/
 |   |-- app/
-|   |   `-- .gitkeep
+|   |   |-- favicon.ico
+|   |   |-- globals.css
+|   |   |-- layout.tsx
+|   |   `-- page.tsx
 |   |-- components/
 |   |   `-- .gitkeep
 |   |-- hooks/
 |   |   `-- .gitkeep
 |   |-- lib/
 |   |   `-- .gitkeep
+|   |-- package.json
 |   |-- public/
-|   |   `-- .gitkeep
+|   |   |-- file.svg
+|   |   |-- globe.svg
+|   |   |-- next.svg
+|   |   |-- vercel.svg
+|   |   `-- window.svg
 |   |-- styles/
 |   |   `-- .gitkeep
+|   |-- eslint.config.mjs
+|   |-- next.config.ts
+|   |-- postcss.config.mjs
+|   `-- tsconfig.json
+|-- package.json
 |   `-- types/
 |       `-- .gitkeep
 |-- .gitignore
+|-- package-lock.json
 `-- README.md
 ```
 
@@ -89,39 +110,40 @@ SecureBoard/
 - Docker e Docker Compose
 - PostgreSQL 16+ se optar por rodar sem container
 
-### 2. Estrategia recomendada de bootstrap
-
-Como este repositório ainda esta na fase inicial de estrutura, o caminho sugerido e:
+### 2. Instalar dependencias
 
 ```bash
-# frontend
-npx create-next-app@latest frontend --ts --tailwind --eslint --app --src-dir=false --import-alias "@/*"
-
-# backend
-mkdir backend
-cd backend
-npm init -y
-npm install express cors helmet morgan zod dotenv
-npm install @prisma/client
-npm install -D typescript tsx ts-node-dev @types/node @types/express @types/cors @types/morgan prisma
+npm install
 ```
 
-### 3. Fluxo esperado para desenvolvimento
+### 3. Configurar ambiente do backend
 
 ```bash
-# na raiz, subir banco e servicos auxiliares via Docker
-docker compose up -d
-
-# em outro terminal, iniciar backend
 cd backend
-npm run dev
-
-# em outro terminal, iniciar frontend
-cd frontend
-npm run dev
+copy .env.example .env
+cd ..
 ```
 
-O frontend deve ficar disponivel em http://localhost:3000 e a API pode ser exposta, por exemplo, em http://localhost:3333.
+Atualize a DATABASE_URL conforme seu PostgreSQL local ou container.
+
+### 4. Fluxo de desenvolvimento
+
+```bash
+# terminal 1 - backend
+npm run dev:backend
+
+# terminal 2 - frontend
+npm run dev:frontend
+```
+
+O frontend fica em http://localhost:3000 e a API responde, por padrao, em http://localhost:3333.
+
+### 5. Validacao basica
+
+```bash
+npm run build:frontend
+npm run build:backend
+```
 
 ## Seguranca
 
@@ -140,10 +162,9 @@ O projeto sera guiado por principios alinhados ao OWASP Top 10 e ao OWASP ASVS. 
 
 ## Proximos Passos
 
-- adicionar package.json na raiz para scripts compartilhados
 - configurar docker-compose.yml com PostgreSQL
-- iniciar scaffold do backend com Express e Prisma
-- iniciar scaffold do frontend com Next.js e Tailwind
+- expandir os modulos de autenticacao e autorizacao
+- integrar Prisma migrations e seed inicial
 - adicionar CI para lint, testes e analise de seguranca
 
 ## Licenca
