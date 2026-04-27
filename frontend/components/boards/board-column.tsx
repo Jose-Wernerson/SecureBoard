@@ -3,20 +3,40 @@
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Trash2 } from "lucide-react";
+import { useState } from "react";
 
 import { BoardCardItem } from "@/components/boards/board-card-item";
 import { CreateCardForm } from "@/components/boards/create-card-form";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import type { ColumnRecord } from "@/types/board";
 
 type BoardColumnProps = {
   column: ColumnRecord;
   isCreatingCard: boolean;
+  isDeleting: boolean;
   onCreateCard: (input: { title: string; description?: string }) => Promise<void>;
+  onDeleteColumn: () => Promise<void>;
+  onDeleteCard: (cardId: string) => Promise<void>;
+  onUpdateCard: (cardId: string, input: { title: string; description?: string }) => Promise<void>;
+  deletingCardId: string | null;
+  updatingCardId: string | null;
 };
 
-export function BoardColumn({ column, isCreatingCard, onCreateCard }: BoardColumnProps) {
+export function BoardColumn({
+  column,
+  isCreatingCard,
+  isDeleting,
+  onCreateCard,
+  onDeleteColumn,
+  onDeleteCard,
+  onUpdateCard,
+  deletingCardId,
+  updatingCardId,
+}: BoardColumnProps) {
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const {
     attributes,
     isDragging,
@@ -59,9 +79,22 @@ export function BoardColumn({ column, isCreatingCard, onCreateCard }: BoardColum
           <h3 className="mt-2 text-lg font-semibold tracking-[-0.03em] text-white">{column.title}</h3>
         </div>
 
-        <button className="rounded-2xl p-2 text-slate-400 hover:bg-white/8 hover:text-white" type="button" {...attributes} {...listeners}>
-          <GripVertical className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            className="rounded-2xl p-2 text-slate-400 transition hover:bg-rose-500/12 hover:text-rose-200"
+            onClick={() => {
+              setConfirmError(null);
+              setIsConfirmOpen(true);
+            }}
+            type="button"
+          >
+            <Trash2 className="h-5 w-5" />
+          </button>
+
+          <button className="rounded-2xl p-2 text-slate-400 hover:bg-white/8 hover:text-white" type="button" {...attributes} {...listeners}>
+            <GripVertical className="h-5 w-5" />
+          </button>
+        </div>
       </header>
 
       <div
@@ -73,7 +106,16 @@ export function BoardColumn({ column, isCreatingCard, onCreateCard }: BoardColum
       >
         <SortableContext items={column.cards.map((card) => card.id)} strategy={verticalListSortingStrategy}>
           {column.cards.length ? (
-            column.cards.map((card) => <BoardCardItem card={card} key={card.id} />)
+            column.cards.map((card) => (
+              <BoardCardItem
+                card={card}
+                isDeleting={deletingCardId === card.id}
+                isUpdating={updatingCardId === card.id}
+                key={card.id}
+                onDelete={() => onDeleteCard(card.id)}
+                onUpdate={(input) => onUpdateCard(card.id, input)}
+              />
+            ))
           ) : (
             <div className="rounded-[1.3rem] border border-dashed border-white/12 bg-slate-950/50 px-4 py-8 text-center text-sm text-slate-500">
               Arraste um card para esta coluna ou crie um novo item abaixo.
@@ -85,6 +127,31 @@ export function BoardColumn({ column, isCreatingCard, onCreateCard }: BoardColum
       <div className="mt-4">
         <CreateCardForm isPending={isCreatingCard} onSubmit={onCreateCard} />
       </div>
+
+      <ConfirmDialog
+        confirmLabel="Excluir coluna"
+        description="Tem certeza? Todos os cards dessa coluna serão removidos em cascata pelo backend."
+        errorMessage={confirmError}
+        isPending={isDeleting}
+        onClose={() => {
+          if (!isDeleting) {
+            setIsConfirmOpen(false);
+            setConfirmError(null);
+          }
+        }}
+        onConfirm={async () => {
+          setConfirmError(null);
+
+          try {
+            await onDeleteColumn();
+            setIsConfirmOpen(false);
+          } catch (error) {
+            setConfirmError(error instanceof Error ? error.message : "Nao foi possivel excluir a coluna.");
+          }
+        }}
+        open={isConfirmOpen}
+        title="Excluir coluna"
+      />
     </section>
   );
 }

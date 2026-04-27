@@ -5,5 +5,6 @@ export const queryKeys = {
   boards: {
     list: ["boards"] as const,
     detail: (boardId: string) => ["boards", boardId] as const,
+    audit: (boardId: string) => ["boards", boardId, "audit"] as const,
   },
 };

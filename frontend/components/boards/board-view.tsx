@@ -12,21 +12,39 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LayoutPanelLeft, Layers3 } from "lucide-react";
+import { LayoutPanelLeft, Layers3, Pencil, ScrollText, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
+import { BoardEditModal } from "@/components/boards/board-edit-modal";
 import { BoardCardItem } from "@/components/boards/board-card-item";
 import { BoardColumn } from "@/components/boards/board-column";
 import { CreateColumnForm } from "@/components/boards/create-column-form";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   createCardRequest,
   createColumnRequest,
+  deleteBoardRequest,
+  deleteCardRequest,
+  deleteColumnRequest,
   getBoardRequest,
   moveCardRequest,
   reorderColumnsRequest,
+  updateBoardRequest,
+  updateCardRequest,
 } from "@/lib/api/boards";
-import { moveCardInBoard, reorderBoardColumns, replaceBoardInList } from "@/lib/board-utils";
+import {
+  moveCardInBoard,
+  removeBoardFromList,
+  removeCardFromBoard,
+  removeColumnFromBoard,
+  reorderBoardColumns,
+  replaceBoardInList,
+  updateBoardDetails,
+  updateCardInBoard,
+} from "@/lib/board-utils";
 import { queryKeys } from "@/lib/query-keys";
 import type { BoardRecord, BoardsResponse, CardRecord } from "@/types/board";
 
@@ -62,8 +80,12 @@ function findCardPosition(board: BoardRecord, cardId: string) {
 }
 
 export function BoardView({ boardId }: BoardViewProps) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [activeDrag, setActiveDrag] = useState<ActiveDrag>(null);
+  const [isEditBoardOpen, setIsEditBoardOpen] = useState(false);
+  const [isDeleteBoardOpen, setIsDeleteBoardOpen] = useState(false);
+  const [deleteBoardError, setDeleteBoardError] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -81,6 +103,7 @@ export function BoardView({ boardId }: BoardViewProps) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.boards.detail(boardId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.boards.list });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.audit(boardId) });
     },
   });
 
@@ -89,6 +112,70 @@ export function BoardView({ boardId }: BoardViewProps) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.boards.detail(boardId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.boards.list });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.audit(boardId) });
+    },
+  });
+
+  const updateBoardMutation = useMutation({
+    mutationFn: (input: { title?: string; description?: string }) => updateBoardRequest(boardId, input),
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.boards.detail(boardId) });
+
+      const previousBoard = queryClient.getQueryData<BoardRecord>(queryKeys.boards.detail(boardId));
+      const previousBoards = queryClient.getQueryData<BoardsResponse>(queryKeys.boards.list);
+
+      if (previousBoard) {
+        const nextBoard = updateBoardDetails(previousBoard, input);
+        queryClient.setQueryData(queryKeys.boards.detail(boardId), nextBoard);
+        queryClient.setQueryData(queryKeys.boards.list, replaceBoardInList(previousBoards, nextBoard));
+      }
+
+      return { previousBoard, previousBoards };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previousBoard) {
+        queryClient.setQueryData(queryKeys.boards.detail(boardId), context.previousBoard);
+      }
+
+      if (context?.previousBoards) {
+        queryClient.setQueryData(queryKeys.boards.list, context.previousBoards);
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.detail(boardId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.list });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.audit(boardId) });
+    },
+  });
+
+  const deleteBoardMutation = useMutation({
+    mutationFn: () => deleteBoardRequest(boardId),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.boards.detail(boardId) });
+
+      const previousBoard = queryClient.getQueryData<BoardRecord>(queryKeys.boards.detail(boardId));
+      const previousBoards = queryClient.getQueryData<BoardsResponse>(queryKeys.boards.list);
+
+      queryClient.removeQueries({ queryKey: queryKeys.boards.detail(boardId) });
+      queryClient.setQueryData(queryKeys.boards.list, removeBoardFromList(previousBoards, boardId));
+
+      return { previousBoard, previousBoards };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previousBoard) {
+        queryClient.setQueryData(queryKeys.boards.detail(boardId), context.previousBoard);
+      }
+
+      if (context?.previousBoards) {
+        queryClient.setQueryData(queryKeys.boards.list, context.previousBoards);
+      }
+    },
+    onSuccess: () => {
+      router.replace("/dashboard");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.list });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.audit(boardId) });
     },
   });
 
@@ -126,6 +213,39 @@ export function BoardView({ boardId }: BoardViewProps) {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.boards.detail(boardId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.boards.list });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.audit(boardId) });
+    },
+  });
+
+  const deleteColumnMutation = useMutation({
+    mutationFn: (columnId: string) => deleteColumnRequest(boardId, columnId),
+    onMutate: async (columnId) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.boards.detail(boardId) });
+
+      const previousBoard = queryClient.getQueryData<BoardRecord>(queryKeys.boards.detail(boardId));
+      const previousBoards = queryClient.getQueryData<BoardsResponse>(queryKeys.boards.list);
+
+      if (previousBoard) {
+        const nextBoard = removeColumnFromBoard(previousBoard, columnId);
+        queryClient.setQueryData(queryKeys.boards.detail(boardId), nextBoard);
+        queryClient.setQueryData(queryKeys.boards.list, replaceBoardInList(previousBoards, nextBoard));
+      }
+
+      return { previousBoard, previousBoards };
+    },
+    onError: (_error, _columnId, context) => {
+      if (context?.previousBoard) {
+        queryClient.setQueryData(queryKeys.boards.detail(boardId), context.previousBoard);
+      }
+
+      if (context?.previousBoards) {
+        queryClient.setQueryData(queryKeys.boards.list, context.previousBoards);
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.detail(boardId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.list });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.audit(boardId) });
     },
   });
 
@@ -165,6 +285,81 @@ export function BoardView({ boardId }: BoardViewProps) {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.boards.detail(boardId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.boards.list });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.audit(boardId) });
+    },
+  });
+
+  const updateCardMutation = useMutation({
+    mutationFn: (input: { cardId: string; title?: string; description?: string }) =>
+      updateCardRequest(boardId, input.cardId, {
+        title: input.title,
+        description: input.description,
+      }),
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.boards.detail(boardId) });
+
+      const previousBoard = queryClient.getQueryData<BoardRecord>(queryKeys.boards.detail(boardId));
+      const previousBoards = queryClient.getQueryData<BoardsResponse>(queryKeys.boards.list);
+      const currentCard = previousBoard?.columns.flatMap((column) => column.cards).find((card) => card.id === input.cardId);
+
+      if (previousBoard && currentCard) {
+        const nextBoard = updateCardInBoard(previousBoard, {
+          ...currentCard,
+          title: input.title ?? currentCard.title,
+          description: input.description === undefined ? currentCard.description : input.description,
+        });
+
+        queryClient.setQueryData(queryKeys.boards.detail(boardId), nextBoard);
+        queryClient.setQueryData(queryKeys.boards.list, replaceBoardInList(previousBoards, nextBoard));
+      }
+
+      return { previousBoard, previousBoards };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previousBoard) {
+        queryClient.setQueryData(queryKeys.boards.detail(boardId), context.previousBoard);
+      }
+
+      if (context?.previousBoards) {
+        queryClient.setQueryData(queryKeys.boards.list, context.previousBoards);
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.detail(boardId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.list });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.audit(boardId) });
+    },
+  });
+
+  const deleteCardMutation = useMutation({
+    mutationFn: (cardId: string) => deleteCardRequest(boardId, cardId),
+    onMutate: async (cardId) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.boards.detail(boardId) });
+
+      const previousBoard = queryClient.getQueryData<BoardRecord>(queryKeys.boards.detail(boardId));
+      const previousBoards = queryClient.getQueryData<BoardsResponse>(queryKeys.boards.list);
+
+      if (previousBoard) {
+        const nextBoard = removeCardFromBoard(previousBoard, cardId);
+        queryClient.setQueryData(queryKeys.boards.detail(boardId), nextBoard);
+        queryClient.setQueryData(queryKeys.boards.list, replaceBoardInList(previousBoards, nextBoard));
+      }
+
+      return { previousBoard, previousBoards };
+    },
+    onError: (_error, _cardId, context) => {
+      if (context?.previousBoard) {
+        queryClient.setQueryData(queryKeys.boards.detail(boardId), context.previousBoard);
+      }
+
+      if (context?.previousBoards) {
+        queryClient.setQueryData(queryKeys.boards.list, context.previousBoards);
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.detail(boardId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.list });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.boards.audit(boardId) });
     },
   });
 
@@ -310,7 +505,31 @@ export function BoardView({ boardId }: BoardViewProps) {
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col items-stretch gap-3 lg:items-end">
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={() => setIsEditBoardOpen(true)} variant="secondary">
+                <Pencil className="mr-2 h-4 w-4" />
+                Editar board
+              </Button>
+              <Link href={`/boards/${boardId}/audit`}>
+                <Button variant="secondary">
+                  <ScrollText className="mr-2 h-4 w-4" />
+                  Auditoria
+                </Button>
+              </Link>
+              <Button
+                onClick={() => {
+                  setDeleteBoardError(null);
+                  setIsDeleteBoardOpen(true);
+                }}
+                variant="danger"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Excluir board
+              </Button>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/60 px-5 py-4">
               <div className="flex items-center gap-2 text-sm font-medium text-slate-300">
                 <LayoutPanelLeft className="h-4 w-4 text-cyan-200" />
@@ -325,6 +544,7 @@ export function BoardView({ boardId }: BoardViewProps) {
               </div>
               <p className="mt-3 text-3xl font-semibold text-white">{totalCards}</p>
             </div>
+            </div>
           </div>
         </div>
       </section>
@@ -337,12 +557,22 @@ export function BoardView({ boardId }: BoardViewProps) {
                 <BoardColumn
                   column={column}
                   isCreatingCard={createCardMutation.isPending}
+                  isDeleting={deleteColumnMutation.isPending && deleteColumnMutation.variables === column.id}
+                  deletingCardId={deleteCardMutation.isPending ? deleteCardMutation.variables ?? null : null}
                   key={column.id}
+                  onDeleteCard={(cardId) => deleteCardMutation.mutateAsync(cardId).then(() => undefined)}
+                  onDeleteColumn={() => deleteColumnMutation.mutateAsync(column.id).then(() => undefined)}
                   onCreateCard={(input) => createCardMutation.mutateAsync({
                     columnId: column.id,
                     title: input.title,
                     description: input.description,
                   }).then(() => undefined)}
+                  onUpdateCard={(cardId, input) => updateCardMutation.mutateAsync({
+                    cardId,
+                    title: input.title,
+                    description: input.description,
+                  }).then(() => undefined)}
+                  updatingCardId={updateCardMutation.isPending ? updateCardMutation.variables?.cardId ?? null : null}
                 />
               ))}
 
@@ -364,6 +594,42 @@ export function BoardView({ boardId }: BoardViewProps) {
           </DragOverlay>
         </DndContext>
       </section>
+
+      <BoardEditModal
+        board={boardQuery.data}
+        isPending={updateBoardMutation.isPending}
+        onClose={() => {
+          if (!updateBoardMutation.isPending) {
+            setIsEditBoardOpen(false);
+          }
+        }}
+        onSubmit={(input) => updateBoardMutation.mutateAsync(input).then(() => undefined)}
+        open={isEditBoardOpen}
+      />
+
+      <ConfirmDialog
+        confirmLabel="Excluir board"
+        description="Tem certeza? O board, as colunas, os cards e os logs relacionados serão removidos."
+        errorMessage={deleteBoardError}
+        isPending={deleteBoardMutation.isPending}
+        onClose={() => {
+          if (!deleteBoardMutation.isPending) {
+            setIsDeleteBoardOpen(false);
+            setDeleteBoardError(null);
+          }
+        }}
+        onConfirm={async () => {
+          setDeleteBoardError(null);
+
+          try {
+            await deleteBoardMutation.mutateAsync();
+          } catch (error) {
+            setDeleteBoardError(error instanceof Error ? error.message : "Nao foi possivel excluir o board.");
+          }
+        }}
+        open={isDeleteBoardOpen}
+        title="Excluir board"
+      />
     </div>
   );
 }

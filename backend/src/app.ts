@@ -4,11 +4,17 @@ import fastifyHelmet from "@fastify/helmet";
 import Fastify from "fastify";
 
 import { env } from "./config/env.js";
+import { registerOpenApi } from "./docs/openapi.js";
 import { registerErrorHandler } from "./middlewares/error-handler.js";
 import { registerRoutes } from "./routes/index.js";
 
 export function buildApp() {
   const app = Fastify({
+    ajv: {
+      customOptions: {
+        strict: false,
+      },
+    },
     logger:
       env.NODE_ENV === "development"
         ? {
@@ -32,7 +38,10 @@ export function buildApp() {
     credentials: true,
   });
 
-  app.register(registerRoutes);
+  app.register(async (scopedApp) => {
+    await registerOpenApi(scopedApp);
+    await registerRoutes(scopedApp);
+  });
 
   return app;
 }
