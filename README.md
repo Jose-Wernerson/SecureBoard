@@ -170,3 +170,7 @@ O projeto sera guiado por principios alinhados ao OWASP Top 10 e ao OWASP ASVS. 
 ## Licenca
 
 Uso educacional e demonstrativo para portfólio. Defina uma licenca formal antes da publicacao.
+
+## Deploy em Producao
+
+O guia operacional completo para Railway e Vercel esta em [docs/deploy-production.md](docs/deploy-production.md).

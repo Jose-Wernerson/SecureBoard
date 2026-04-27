@@ -15,6 +15,7 @@ export function buildApp() {
         strict: false,
       },
     },
+    trustProxy: true,
     logger:
       env.NODE_ENV === "development"
         ? {
